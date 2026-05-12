@@ -31,7 +31,9 @@
 #include <freerdp/client/rdpei.h>
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/client/cliprdr.h>
+#include <freerdp/client/disp.h>
 #include <freerdp/codec/h264.h>
+#include <freerdp/channels/disp.h>
 #include <freerdp/channels/channels.h>
 #include <freerdp/client/channels.h>
 #include <freerdp/client/cmdline.h>
@@ -57,6 +59,18 @@
 
 /* Defines the JNI version supported by this library. */
 #define FREERDP_JNI_VERSION FREERDP_VERSION_FULL
+
+static UINT android_DisplayControlCaps(DispClientContext* context, UINT32 MaxNumMonitors,
+                                       UINT32 MaxMonitorAreaFactorA,
+                                       UINT32 MaxMonitorAreaFactorB)
+{
+	WLog_DBG(TAG,
+	         "Display control caps received: monitors=%" PRIu32 ", areaA=%" PRIu32
+	         ", areaB=%" PRIu32,
+	         MaxNumMonitors, MaxMonitorAreaFactorA, MaxMonitorAreaFactorB);
+	return CHANNEL_RC_OK;
+}
+
 static void android_OnChannelConnectedEventHandler(void* context,
                                                    const ChannelConnectedEventArgs* e)
 {
@@ -75,6 +89,15 @@ static void android_OnChannelConnectedEventHandler(void* context,
 	if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) == 0)
 	{
 		android_cliprdr_init(afc, (CliprdrClientContext*)e->pInterface);
+	}
+	else if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0)
+	{
+		afc->disp = (DispClientContext*)e->pInterface;
+		if (afc->disp)
+		{
+			afc->disp->custom = afc;
+			afc->disp->DisplayControlCaps = android_DisplayControlCaps;
+		}
 	}
 	else
 		freerdp_client_OnChannelConnectedEventHandler(context, e);
@@ -98,6 +121,10 @@ static void android_OnChannelDisconnectedEventHandler(void* context,
 	if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) == 0)
 	{
 		android_cliprdr_uninit(afc, (CliprdrClientContext*)e->pInterface);
+	}
+	else if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0)
+	{
+		afc->disp = nullptr;
 	}
 	else
 		freerdp_client_OnChannelDisconnectedEventHandler(context, e);
@@ -172,10 +199,20 @@ static BOOL android_desktop_resize(rdpContext* context)
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(context->settings);
 	WINPR_ASSERT(context->instance);
+	WINPR_ASSERT(context->gdi);
+
+	const UINT32 width = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopWidth);
+	const UINT32 height = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopHeight);
+
+	if (!gdi_resize(context->gdi, width, height))
+	{
+		WLog_ERR(TAG, "gdi_resize failed for %" PRIu32 "x%" PRIu32, width, height);
+		return FALSE;
+	}
 
 	freerdp_callback("OnGraphicsResize", "(JIII)V", (jlong)context->instance,
-	                 freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopWidth),
-	                 freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopHeight),
+	                 width,
+	                 height,
 	                 freerdp_settings_get_uint32(context->settings, FreeRDP_ColorDepth));
 	return TRUE;
 }
@@ -956,6 +993,44 @@ out_fail:
 		(*env)->ReleaseStringUTFChars(env, jdata, data);
 
 	return ret;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_freerdp_freerdpcore_services_LibFreeRDP_freerdp_1send_1desktop_1size(JNIEnv* env,
+                                                                              jclass cls,
+                                                                              jlong instance,
+                                                                              jint width,
+                                                                              jint height)
+{
+	ANDROID_EVENT* event;
+	freerdp* inst = (freerdp*)instance;
+
+	if (!inst || !inst->context || width <= 0 || height <= 0)
+		return JNI_FALSE;
+
+	androidContext* ctx = (androidContext*)inst->context;
+	rdpSettings* settings = inst->context->settings;
+
+	if (!settings || !freerdp_settings_get_bool(settings, FreeRDP_DynamicResolutionUpdate) ||
+	    !ctx->disp)
+	{
+		WLog_WARN(TAG, "Cannot send desktop size before display control channel is ready");
+		return JNI_FALSE;
+	}
+
+	event = (ANDROID_EVENT*)android_event_desktop_size_new((UINT32)width, (UINT32)height);
+
+	if (!event)
+		return JNI_FALSE;
+
+	if (!android_push_event(inst, event))
+	{
+		android_event_free(event);
+		return JNI_FALSE;
+	}
+
+	WLog_DBG(TAG, "send_desktop_size: %dx%d", width, height);
+	return JNI_TRUE;
 }
 
 JNIEXPORT jstring JNICALL

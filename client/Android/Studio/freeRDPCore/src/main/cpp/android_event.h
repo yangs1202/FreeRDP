@@ -19,6 +19,7 @@
 #define EVENT_TYPE_DISCONNECT 3
 #define EVENT_TYPE_KEY_UNICODE 4
 #define EVENT_TYPE_CLIPBOARD 5
+#define EVENT_TYPE_DESKTOP_SIZE 6
 
 typedef struct
 {
@@ -49,6 +50,13 @@ typedef struct
 
 typedef struct
 {
+	int type;
+	UINT32 width;
+	UINT32 height;
+} ANDROID_EVENT_DESKTOP_SIZE;
+
+typedef struct
+{
 	int size;
 	int count;
 	HANDLE isSet;
@@ -66,6 +74,8 @@ FREERDP_LOCAL ANDROID_EVENT_CURSOR* android_event_cursor_new(UINT16 flags, UINT1
 FREERDP_LOCAL ANDROID_EVENT* android_event_disconnect_new(void);
 FREERDP_LOCAL ANDROID_EVENT_CLIPBOARD* android_event_clipboard_new(const void* data,
                                                                    size_t data_length);
+FREERDP_LOCAL ANDROID_EVENT_DESKTOP_SIZE* android_event_desktop_size_new(UINT32 width,
+                                                                         UINT32 height);
 
 FREERDP_LOCAL void android_event_free(ANDROID_EVENT* event);
 

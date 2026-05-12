@@ -16,6 +16,7 @@
 
 #include <freerdp/freerdp.h>
 #include <freerdp/log.h>
+#include <freerdp/settings.h>
 
 #define TAG CLIENT_TAG("android")
 
@@ -138,6 +139,51 @@ static BOOL android_process_event(ANDROID_EVENT_QUEUE* queue, freerdp* inst)
 					ClipboardEmpty(afc->clipboard);
 
 				rc = (android_cliprdr_send_client_format_list(afc->cliprdr) == CHANNEL_RC_OK);
+			}
+			break;
+
+			case EVENT_TYPE_DESKTOP_SIZE:
+			{
+				ANDROID_EVENT_DESKTOP_SIZE* resize_event = (ANDROID_EVENT_DESKTOP_SIZE*)event;
+				rdpSettings* settings = context->settings;
+				DISPLAY_CONTROL_MONITOR_LAYOUT layout = WINPR_C_ARRAY_INIT;
+
+				if (!settings || !freerdp_settings_get_bool(settings, FreeRDP_DynamicResolutionUpdate) ||
+				    !afc->disp)
+				{
+					WLog_WARN(TAG, "Display control channel is not available for dynamic resize");
+					rc = TRUE;
+					break;
+				}
+
+				layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
+				layout.Top = layout.Left = 0;
+				layout.Width = resize_event->width;
+				layout.Height = resize_event->height;
+				layout.Orientation =
+				    freerdp_settings_get_uint16(settings, FreeRDP_DesktopOrientation);
+				layout.DesktopScaleFactor =
+				    freerdp_settings_get_uint32(settings, FreeRDP_DesktopScaleFactor);
+				layout.DeviceScaleFactor =
+				    freerdp_settings_get_uint32(settings, FreeRDP_DeviceScaleFactor);
+				layout.PhysicalWidth = resize_event->width;
+				layout.PhysicalHeight = resize_event->height;
+
+				rc = (IFCALLRESULT(CHANNEL_RC_OK, afc->disp->SendMonitorLayout, afc->disp, 1,
+				                   &layout) == CHANNEL_RC_OK);
+				if (rc)
+				{
+					(void)freerdp_settings_set_uint32(settings, FreeRDP_SmartSizingWidth,
+					                                  resize_event->width);
+					(void)freerdp_settings_set_uint32(settings, FreeRDP_SmartSizingHeight,
+					                                  resize_event->height);
+				}
+				else
+				{
+					WLog_ERR(TAG, "SendMonitorLayout failed for %" PRIu32 "x%" PRIu32,
+					         resize_event->width, resize_event->height);
+					rc = TRUE;
+				}
 			}
 			break;
 
@@ -304,6 +350,25 @@ static void android_event_clipboard_free(ANDROID_EVENT_CLIPBOARD* event)
 	}
 }
 
+ANDROID_EVENT_DESKTOP_SIZE* android_event_desktop_size_new(UINT32 width, UINT32 height)
+{
+	ANDROID_EVENT_DESKTOP_SIZE* event;
+	event = (ANDROID_EVENT_DESKTOP_SIZE*)calloc(1, sizeof(ANDROID_EVENT_DESKTOP_SIZE));
+
+	if (!event)
+		return nullptr;
+
+	event->type = EVENT_TYPE_DESKTOP_SIZE;
+	event->width = width;
+	event->height = height;
+	return event;
+}
+
+static void android_event_desktop_size_free(ANDROID_EVENT_DESKTOP_SIZE* event)
+{
+	free(event);
+}
+
 BOOL android_event_queue_init(freerdp* inst)
 {
 	androidContext* aCtx = (androidContext*)inst->context;
@@ -396,6 +461,10 @@ void android_event_free(ANDROID_EVENT* event)
 
 		case EVENT_TYPE_CLIPBOARD:
 			android_event_clipboard_free((ANDROID_EVENT_CLIPBOARD*)event);
+			break;
+
+		case EVENT_TYPE_DESKTOP_SIZE:
+			android_event_desktop_size_free((ANDROID_EVENT_DESKTOP_SIZE*)event);
 			break;
 
 		default:

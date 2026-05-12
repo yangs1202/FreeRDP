@@ -152,6 +152,8 @@ public class LibFreeRDP
 
 	private static native boolean freerdp_send_clipboard_data(long inst, String data);
 
+	private static native boolean freerdp_send_desktop_size(long inst, int width, int height);
+
 	private static native String freerdp_get_last_error_string(long inst);
 
 	public static void setEventListener(EventListener l)
@@ -273,6 +275,7 @@ public class LibFreeRDP
 		args.add(
 		    String.format("/size:%dx%d", screenSettings.getWidth(), screenSettings.getHeight()));
 		args.add("/bpp:" + screenSettings.getColors());
+		args.add("/dynamic-resolution");
 
 		if (advanced.getConsoleMode())
 		{
@@ -404,6 +407,7 @@ public class LibFreeRDP
 		// Now we only support Software GDI
 		args.add(TAG);
 		args.add("/gdi:sw");
+		args.add("/dynamic-resolution");
 
 		final String clientName = ApplicationSettingsActivity.getClientName(context);
 		if (!clientName.isEmpty())
@@ -485,6 +489,11 @@ public class LibFreeRDP
 	public static boolean sendClipboardData(long inst, String data)
 	{
 		return freerdp_send_clipboard_data(inst, data);
+	}
+
+	public static boolean sendDesktopSize(long inst, int width, int height)
+	{
+		return freerdp_send_desktop_size(inst, width, height);
 	}
 
 	private static void OnConnectionSuccess(long inst)
