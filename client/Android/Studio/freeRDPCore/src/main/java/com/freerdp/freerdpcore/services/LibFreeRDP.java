@@ -15,8 +15,6 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.util.Log;
 
-import androidx.collection.LongSparseArray;
-
 import com.freerdp.freerdpcore.application.GlobalApp;
 import com.freerdp.freerdpcore.application.SessionState;
 import com.freerdp.freerdpcore.domain.BookmarkBase;
@@ -33,7 +31,7 @@ public class LibFreeRDP
 	private static EventListener listener;
 	private static boolean mHasH264 = false;
 
-	private static final LongSparseArray<Boolean> mInstanceState = new LongSparseArray<>();
+	private static final FreeRdpInstanceRegistry mInstanceState = new FreeRdpInstanceRegistry();
 
 	public static final long VERIFY_CERT_FLAG_NONE = 0x00;
 	public static final long VERIFY_CERT_FLAG_LEGACY = 0x02;
@@ -168,49 +166,30 @@ public class LibFreeRDP
 
 	public static void freeInstance(long inst)
 	{
-		synchronized (mInstanceState)
-		{
-			if (mInstanceState.get(inst, false))
-			{
-				freerdp_disconnect(inst);
-			}
-			while (mInstanceState.get(inst, false))
-			{
-				try
-				{
-					mInstanceState.wait();
-				}
-				catch (InterruptedException e)
-				{
-					throw new RuntimeException();
-				}
-			}
-		}
+		if (mInstanceState.requestDisconnect(inst))
+			freerdp_disconnect(inst);
+		if (mInstanceState.isTracked(inst))
+			mInstanceState.awaitInactive(inst);
 		freerdp_free(inst);
 	}
 
 	public static boolean connect(long inst)
 	{
-		synchronized (mInstanceState)
+		if (!mInstanceState.beginConnect(inst))
 		{
-			if (mInstanceState.get(inst, false))
-			{
-				throw new RuntimeException("instance already connected");
-			}
+			throw new RuntimeException("instance already connected");
 		}
-		return freerdp_connect(inst);
+		boolean started = freerdp_connect(inst);
+		if (!started)
+			mInstanceState.completeFailure(inst);
+		return started;
 	}
 
 	public static boolean disconnect(long inst)
 	{
-		synchronized (mInstanceState)
-		{
-			if (mInstanceState.get(inst, false))
-			{
-				return freerdp_disconnect(inst);
-			}
-			return true;
-		}
+		if (mInstanceState.requestDisconnect(inst))
+			return freerdp_disconnect(inst);
+		return true;
 	}
 
 	public static boolean cancelConnection(long inst)
@@ -498,24 +477,14 @@ public class LibFreeRDP
 
 	private static void OnConnectionSuccess(long inst)
 	{
-		if (listener != null)
+		if (mInstanceState.completeConnect(inst) && listener != null)
 			listener.OnConnectionSuccess(inst);
-		synchronized (mInstanceState)
-		{
-			mInstanceState.append(inst, true);
-			mInstanceState.notifyAll();
-		}
 	}
 
 	private static void OnConnectionFailure(long inst)
 	{
-		if (listener != null)
+		if (mInstanceState.completeFailure(inst) && listener != null)
 			listener.OnConnectionFailure(inst);
-		synchronized (mInstanceState)
-		{
-			mInstanceState.remove(inst);
-			mInstanceState.notifyAll();
-		}
 	}
 
 	private static void OnPreConnect(long inst)
@@ -532,13 +501,8 @@ public class LibFreeRDP
 
 	private static void OnDisconnected(long inst)
 	{
-		if (listener != null)
+		if (mInstanceState.completeDisconnect(inst) && listener != null)
 			listener.OnDisconnected(inst);
-		synchronized (mInstanceState)
-		{
-			mInstanceState.remove(inst);
-			mInstanceState.notifyAll();
-		}
 	}
 
 	private static void OnSettingsChanged(long inst, int width, int height, int bpp)

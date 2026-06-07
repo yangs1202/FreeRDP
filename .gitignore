@@ -3,3 +3,8 @@
 build
 checker
 abi-checker
+
+# Android local build artifacts
+**/.cxx
+client/Android/Studio/freeRDPCore/src/main/cpp/external/
+client/Android/Studio/freeRDPCore/src/main/jniLibs/
