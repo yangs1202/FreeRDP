@@ -4821,6 +4821,15 @@ BOOL rdp_recv_confirm_active(rdpRdp* rdp, wStream* s, UINT16 pduLength)
 		settings->LargePointerFlag = 0;
 	}
 
+	const size_t trailing = Stream_GetRemainingLength(s);
+	if (trailing > 0)
+	{
+		WLog_Print(rdp->log, WLOG_WARN,
+		           "Skipping %" PRIuz " trailing bytes in Confirm Active capability data", trailing);
+		if (!Stream_SafeSeek(s, trailing))
+			return FALSE;
+	}
+
 	return tpkt_ensure_stream_consumed(rdp->log, s, pduLength);
 }
 
