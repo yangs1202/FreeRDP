@@ -896,6 +896,17 @@ BOOL input_recv(rdpInput* input, wStream* s)
 
 	Stream_Read_UINT16(s, numberEvents); /* numberEvents (2 bytes) */
 	Stream_Seek(s, 2);                   /* pad2Octets (2 bytes) */
+	/*
+	 * Jump Desktop sends a zero-event Input PDU followed by one unused
+	 * 12-byte event slot.  Consume only this exact malformed variant so it
+	 * cannot desynchronize the enclosing TPKT stream.
+	 */
+	if ((numberEvents == 0) && (Stream_GetRemainingLength(s) == 12))
+	{
+		WLog_WARN(TAG, "Ignoring 12-byte trailing input slot after zero-event Input PDU");
+		Stream_Seek(s, 12);
+		return TRUE;
+	}
 
 	/* Each input event uses 6 exactly bytes. */
 	if (!Stream_CheckAndLogRequiredLengthOfSize(TAG, s, numberEvents, 6ull))
