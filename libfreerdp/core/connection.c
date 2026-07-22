@@ -1728,6 +1728,12 @@ BOOL rdp_server_accept_mcs_connect_initial(rdpRdp* rdp, wStream* s)
 	{
 		ADDIN_ARGV* arg = nullptr;
 		rdpMcsChannel* cur = &mcs->channels[i];
+		if (cur->Name[0] == '\0')
+		{
+			WLog_WARN(TAG, "Ignoring unnamed static channel [%" PRIu16 "]", cur->ChannelId);
+			cur->joined = TRUE;
+			continue;
+		}
 		const char* params[1] = { cur->Name };
 		WLog_DBG(TAG, " %s [%" PRIu16 "]", cur->Name, cur->ChannelId);
 		arg = freerdp_addin_argv_new(ARRAYSIZE(params), params);
