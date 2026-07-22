@@ -2875,6 +2875,8 @@ static BOOL rdp_read_large_pointer_capability_set(wLog* log, wStream* s, rdpSett
 		return FALSE;
 
 	Stream_Read_UINT16(s, largePointerSupportFlags); /* largePointerSupportFlags (2 bytes) */
+	if (Stream_GetRemainingLength(s) == 2)
+		Stream_Seek_UINT16(s); /* compatibility padding emitted by some clients */
 	settings->LargePointerFlag &= largePointerSupportFlags;
 	if ((largePointerSupportFlags & ~(LARGE_POINTER_FLAG_96x96 | LARGE_POINTER_FLAG_384x384)) != 0)
 	{
