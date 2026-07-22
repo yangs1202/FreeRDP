@@ -4822,12 +4822,18 @@ BOOL rdp_recv_confirm_active(rdpRdp* rdp, wStream* s, UINT16 pduLength)
 	}
 
 	const size_t trailing = Stream_GetRemainingLength(s);
-	if (trailing > 0)
+	if (trailing == 12)
 	{
 		WLog_Print(rdp->log, WLOG_WARN,
-		           "Skipping %" PRIuz " trailing bytes in Confirm Active capability data", trailing);
+		           "Skipping Jump Desktop Confirm Active trailing padding");
 		if (!Stream_SafeSeek(s, trailing))
 			return FALSE;
+	}
+	else if (trailing != 0)
+	{
+		WLog_Print(rdp->log, WLOG_ERROR,
+		           "Unexpected Confirm Active trailing data: %" PRIuz, trailing);
+		return FALSE;
 	}
 
 	return tpkt_ensure_stream_consumed(rdp->log, s, pduLength);
