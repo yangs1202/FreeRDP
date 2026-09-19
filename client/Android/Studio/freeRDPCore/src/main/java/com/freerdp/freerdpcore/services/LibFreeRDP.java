@@ -600,6 +600,17 @@ public class LibFreeRDP
 			uiEventListener.OnRemoteClipboardChanged(data);
 	}
 
+	private static void OnPointerSet(long inst, int[] pixels, int width, int height, int hotspotX,
+	                                 int hotspotY, int visible)
+	{
+		SessionState s = GlobalApp.getSession(inst);
+		if (s == null)
+			return;
+		UIEventListener uiEventListener = s.getUIEventListener();
+		if (uiEventListener != null)
+			uiEventListener.OnPointerSet(pixels, width, height, hotspotX, hotspotY, visible != 0);
+	}
+
 	public static String getVersion()
 	{
 		return freerdp_get_version();
@@ -640,5 +651,8 @@ public class LibFreeRDP
 		void OnGraphicsResize(int width, int height, int bpp);
 
 		void OnRemoteClipboardChanged(String data);
+
+		void OnPointerSet(int[] pixels, int width, int height, int hotspotX, int hotspotY,
+		                  boolean visible);
 	}
 }

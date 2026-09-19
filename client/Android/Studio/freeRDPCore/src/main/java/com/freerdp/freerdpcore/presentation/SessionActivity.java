@@ -665,6 +665,12 @@ public class SessionActivity extends AppCompatActivity
 		mClipboardManager.setClipboardData(data);
 	}
 
+	@Override
+	public void OnPointerSet(int[] pixels, int width, int height, int hotspotX, int hotspotY,
+	                         boolean visible)
+	{
+	}
+
 	// ****************************************************************************
 	// SessionView.SessionViewListener and TouchPointerView.TouchPointerListener
 	// — delegated to SessionInputManager

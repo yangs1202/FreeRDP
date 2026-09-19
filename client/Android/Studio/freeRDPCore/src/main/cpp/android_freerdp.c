@@ -28,6 +28,7 @@
 #include <freerdp/codec/rfx.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/gdi/gfx.h>
+#include <freerdp/codec/color.h>
 #include <freerdp/client/rdpei.h>
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/client/cliprdr.h>
@@ -263,12 +264,77 @@ static void android_Pointer_Free(rdpContext* context, rdpPointer* pointer)
 	WINPR_ASSERT(context);
 }
 
+static BOOL android_Pointer_Notify(rdpContext* context, rdpPointer* pointer, BOOL visible)
+{
+	WINPR_ASSERT(context);
+
+	JNIEnv* env = NULL;
+	jboolean attached = JNI_FALSE;
+	jintArray pixels = NULL;
+	BYTE* data = NULL;
+	jint width = 0;
+	jint height = 0;
+	jint hotspotX = 0;
+	jint hotspotY = 0;
+
+	if (visible && pointer)
+	{
+		width = (jint)pointer->width;
+		height = (jint)pointer->height;
+		hotspotX = (jint)pointer->xPos;
+		hotspotY = (jint)pointer->yPos;
+
+		if (width > 0 && height > 0 && width <= 256 && height <= 256)
+		{
+			const size_t count = (size_t)width * (size_t)height;
+			data = calloc(count, sizeof(UINT32));
+			if (!data)
+				return FALSE;
+
+			if (!freerdp_image_copy_from_pointer_data(
+			        data, PIXEL_FORMAT_BGRA32, 0, 0, 0, (UINT32)width, (UINT32)height,
+			        pointer->xorMaskData, pointer->lengthXorMask, pointer->andMaskData,
+			        pointer->lengthAndMask, pointer->xorBpp,
+			        context->gdi ? &context->gdi->palette : NULL))
+			{
+				free(data);
+				data = NULL;
+				width = 0;
+				height = 0;
+			}
+		}
+		else
+		{
+			width = 0;
+			height = 0;
+		}
+	}
+
+	attached = jni_attach_thread(&env);
+	if (data && env)
+	{
+		pixels = (*env)->NewIntArray(env, width * height);
+		if (pixels)
+			(*env)->SetIntArrayRegion(env, pixels, 0, width * height, (const jint*)data);
+	}
+
+	freerdp_callback("OnPointerSet", "(J[IIIIII)V", (jlong)context->instance, pixels, width, height,
+	                 hotspotX, hotspotY, visible ? 1 : 0);
+
+	if (pixels && env)
+		(*env)->DeleteLocalRef(env, pixels);
+	if (attached == JNI_TRUE)
+		jni_detach_thread();
+	free(data);
+	return TRUE;
+}
+
 static BOOL android_Pointer_Set(rdpContext* context, rdpPointer* pointer)
 {
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(pointer);
 
-	return TRUE;
+	return android_Pointer_Notify(context, pointer, TRUE);
 }
 
 static BOOL android_Pointer_SetPosition(rdpContext* context, UINT32 x, UINT32 y)
@@ -282,14 +348,14 @@ static BOOL android_Pointer_SetNull(rdpContext* context)
 {
 	WINPR_ASSERT(context);
 
-	return TRUE;
+	return android_Pointer_Notify(context, NULL, FALSE);
 }
 
 static BOOL android_Pointer_SetDefault(rdpContext* context)
 {
 	WINPR_ASSERT(context);
 
-	return TRUE;
+	return android_Pointer_Notify(context, NULL, TRUE);
 }
 
 static BOOL android_register_pointer(rdpGraphics* graphics)
